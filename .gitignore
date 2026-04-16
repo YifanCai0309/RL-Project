@@ -2,26 +2,6 @@
 __pycache__/
 *.py[cod]
 *.pyo
-*.egg-info/
-.eggs/
-dist/
-build/
-
-# Rome graph dataset (large benchmark dataset, 11k+ files)
-# Download from: http://www.graphdrawing.org/data/rome-graphs.tgz
-rome/
-
-# Generated visualization PNGs
-viz_output/
-visualizations/
-
-# Intermediate model checkpoints (keep only final models)
-models/gnn_ppo_ck*.pt
-models/gnn_policy_ck*.pt
-models/gnn_gpu_ck*.pt
-
-# Jupyter
-.ipynb_checkpoints/
 
 # OS
 .DS_Store
