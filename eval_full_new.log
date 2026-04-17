@@ -2,6 +2,11 @@ Test graphs found: 101
 GNN-RL model available:    True
 GATv2-PPO model available: True
 
+Column notes:
+  PPO  — GATv2-PPO quick eval (N_TRIALS=5, MAX_STEPS=300); used for fair comparison with other baselines.
+  PPO* — GATv2-PPO submitted coords (MAX_TRIALS=50, MAX_STEPS=500 + SA post-processing refinement);
+          these are the actual values in coords_submission/ evaluated against neato.
+
 Graph                                  N  neato   sfdp   SmGD     SA    MLP    GNN    PPO   PPO*
 -------------------------------------------------------------------------------------------------
 grafo10000.38.graphml                  38    14     9    13    10     8     9     7     7
