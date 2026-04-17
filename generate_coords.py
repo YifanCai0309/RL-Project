@@ -46,8 +46,8 @@ OUTPUT_DIR        = sys.argv[1] if len(sys.argv) > 1 else BASE_DIR
 
 OVERLAP_THRESHOLD = 5.0   # only catch truly collocated nodes (neato already ensures visual separation)
 N_TRIALS          = 5     # initial rollout trials per graph
-MAX_TRIALS        = 30    # keep retrying until better than neato (up to this many)
-MAX_STEPS         = 300   # steps per trial
+MAX_TRIALS        = 50    # keep retrying until better than neato (up to this many)
+MAX_STEPS         = 500   # steps per trial
 STEP_SIZE         = 15.0
 SIGMA             = 0.5
 K_NODES           = 2     # multi-node for GATv2-PPO
@@ -271,6 +271,34 @@ def run_sa(G: nx.Graph) -> torch.Tensor:
     return best_coords
 
 
+def _sa_refine(G: nx.Graph, init_coords: torch.Tensor) -> torch.Tensor:
+    """
+    Short SA pass starting from an existing layout (e.g. RL output).
+    Uses a lower initial temperature so it refines rather than disrupts.
+    """
+    xfn    = XingLoss(G, soft=False)
+    coords = init_coords.clone()
+    T, T_min, alpha = 5.0, 0.01, 0.999
+    best_x      = xfn(coords).item()
+    best_coords = coords.clone()
+
+    for _ in range(3000):
+        ni  = random.randint(0, G.number_of_nodes() - 1)
+        nc  = coords.clone()
+        nc[ni, 0] += random.uniform(-8, 8)
+        nc[ni, 1] += random.uniform(-8, 8)
+        old_x = xfn(coords).item()
+        new_x = xfn(nc).item()
+        if new_x < old_x or random.random() < math.exp(-(new_x - old_x) / max(T, 1e-9)):
+            coords = nc
+            if new_x < best_x:
+                best_x, best_coords = new_x, nc.clone()
+        if best_x == 0:
+            break
+        T = max(T * alpha, T_min)
+    return best_coords
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -313,6 +341,15 @@ def main():
             coords = run_gnn_rl(G, gnn)
         else:
             coords = run_sa(G)
+
+        # SA post-processing: refine RL layout with simulated annealing
+        # Only keep SA result if it strictly improves on the RL layout
+        xfn_sa   = XingLoss(G, soft=False)
+        rl_xing  = xfn_sa(coords).item()
+        if rl_xing > 0:
+            sa_coords = _sa_refine(G, coords)
+            if xfn_sa(sa_coords).item() < rl_xing:
+                coords = sa_coords
 
         # Overlap safety check — fix, then fall back to neato if fix made things worse
         if has_overlap(coords):
