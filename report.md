@@ -194,7 +194,7 @@ Training begins on small, simple graphs and progressively introduces larger ones
 The **Rome graph collection** contains 11,534 undirected graphs of varying sizes and densities, derived from real-world data (mostly $N \leq 100$ nodes).
 
 - **Training set:** grafo0001 – grafo9999 (up to 2,000 graphs used; GATv2-PPO trained on $N \leq 100$; per-size MLPs use graphs of matching size)
-- **Test set:** grafo10000 – grafo10102 (101 graphs, $N \in [30, 99]$, never seen during training; note: grafo10073 and grafo10094 do not exist in the Rome collection)
+- **Test set:** grafo10000 – grafo10102 (101 graphs, $N \in [30, 99]$, never seen during training; the official range grafo10000–grafo10100 yields 99 graphs since grafo10073 and grafo10094 do not exist in the Rome collection — we supplement with grafo10101 and grafo10102 to reach 101 total)
 
 The test set spans a range of sizes and densities, with edge counts ranging from $|E| = 29$ to $|E| = 160$.
 
@@ -245,7 +245,7 @@ Several observations:
 
 ### 5.5 Visualization
 
-Figure 1 shows side-by-side Neato vs. GATv2-PPO layouts for representative test graphs, with crossing edges highlighted in red and crossing points marked with orange stars. The visualizations confirm that the RL policy learns to spread out tangled subgraphs and reduce the density of crossing-prone regions, rather than making random small perturbations.
+Side-by-side Neato vs. GATv2-PPO layouts for all 101 test graphs are provided in the `viz_output/` directory of the repository, with crossing edges highlighted in red and crossing points marked with orange stars. Two representative examples illustrate the qualitative improvement: for grafo10064 ($N=39$), neato produces a tangled central region with 26 crossings, while GATv2-PPO spreads the graph into a cleaner structure with 17 crossings (−35%). For grafo10084 ($N=97$), the densest graph in the test set, GATv2-PPO reduces crossings from 182 to 154, the largest absolute reduction of 28 crossings across all test cases. These visualizations confirm that the RL policy learns to identify and untangle crossing-prone subregions through coordinated node displacements, rather than making random small perturbations.
 
 ---
 
@@ -275,9 +275,7 @@ Without the soft crossing loss ($\alpha = 0$), training is extremely noisy: the 
 
 ### Limitations
 
-- **$O(|E|^2)$ crossing evaluation:** For dense graphs ($|E| = 150$), evaluating crossings requires $\sim\!11{,}000$ segment intersection checks per step. Spatial indexing (sweep line, k-d tree) could reduce this to $O(|E| \log |E|)$.
-- **Approximate log-prob for multi-node:** Sampling $k$ nodes without replacement changes the true distribution. We approximate the log-probability as the sum of independent Categorical log-probs. The Plackett-Luce model provides an exact without-replacement log-prob and could improve training.
-- **Test-time compute matters:** The quick-evaluation GATv2-PPO score (−23.86%, N\_TRIALS=5) and the submitted score (−29.79%, N\_TRIALS=50 + SA refinement) differ by 6 percentage points with no retraining. This highlights that the policy's learned representation unlocks significant additional gains when given more search budget — analogous to best-of-N sampling in language models.
+Our crossing evaluation runs in $O(|E|^2)$ time: for dense graphs ($|E| = 150$), each step requires $\sim\!11{,}000$ segment intersection checks. Spatial indexing (sweep line, k-d tree) could reduce this to $O(|E| \log |E|)$, enabling faster training on larger graphs. Additionally, our multi-node sampling approximates the log-probability as the sum of independent Categorical terms, which is incorrect under without-replacement sampling. The Plackett-Luce distribution provides an exact treatment and could improve the policy gradient estimates. Finally, the gap between the quick-evaluation score (−23.86%, N\_TRIALS=5) and the submitted score (−29.79%, N\_TRIALS=50 + SA refinement) highlights that the current policy has not yet converged to its full potential — richer node features (e.g., per-node current crossing count) and more training epochs could reduce reliance on extended test-time search.
 
 ---
 
@@ -287,7 +285,7 @@ We demonstrated that Reinforcement Learning can effectively reduce edge crossing
 
 The core lessons are twofold. First, **graph structure is a powerful inductive bias**: a policy that can read the adjacency information through message passing can identify crossing-prone nodes and apply appropriate displacements, transferring this skill across graph sizes without retraining. Second, **test-time search amplifies learned policies**: the same trained model, given more rollout budget at inference, delivers substantially better results — a 6 percentage point gain over the quick-evaluation score with zero additional training. The four enhancements (PPO, GATv2, multi-node, curriculum) each address a concrete limitation and together push performance beyond what GCN+REINFORCE alone achieves.
 
-**Reproducibility:** All code is provided. To train the GATv2-PPO model: `python train_gnn_ppo.py`. To evaluate all methods: `python evaluate_full.py`. To generate submission coordinates: `python generate_coords.py coords_submission/`.
+**Reproducibility:** All code is available at **https://github.com/YifanCai0309/RL-Project**. To train the GATv2-PPO model: `python train_gnn_ppo.py`. To evaluate all methods: `python evaluate_full.py`. To generate submission coordinates: `python generate_coords.py coords_submission/`. The final submitted node coordinates for all 101 test graphs are packaged in `coords_submission.tar.gz` at the repository root.
 
 ---
 
