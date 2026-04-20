@@ -1,33 +1,33 @@
 # Graph Layout Optimization via Reinforcement Learning: Minimizing Edge Crossings
 
-**Course:** CSA 5180 — Reinforcement Learning  
-**Date:** April 2026  
-**Dataset:** Rome Graph Collection  
+Course: CSA 5180 — Reinforcement Learning  
+Date: April 2026  
+Dataset: Rome Graph Collection  
 
 ---
 
 ## Abstract
 
-We formulate graph layout optimization as a Reinforcement Learning (RL) problem, where the goal is to learn a policy that iteratively repositions nodes in a 2-D drawing to minimize edge crossings — a central aesthetic criterion in graph visualization. Starting from a force-directed initialization (neato), our RL agent applies node-displacement moves guided by a learned policy. We develop and compare three RL policy architectures — a per-size MLP (RL-MLP), a size-agnostic Graph Convolutional Network (GNN-RL) trained with REINFORCE, and a GATv2 policy trained with PPO (GATv2-PPO) — against four baselines. We additionally introduce four enhancements into GATv2-PPO: (1) **Proximal Policy Optimization (PPO)** for more stable training; (2) **Graph Attention Network v2 (GATv2)** replacing fixed GCN normalization with dynamic attention-weighted aggregation; (3) **multi-node actions** that move two nodes jointly per step; and (4) **curriculum learning** that begins training on small graphs and progressively scales to larger ones. On 101 test graphs from the Rome collection, our GATv2-PPO achieves a mean relative improvement of **−29.79%** vs. neato under the official evaluation metric (submitted coordinates; quick-evaluation score: −23.86%), compared to GNN-RL (−23.29%), RL-MLP (−15.49%), SA (−12.04%), and SmartGD (−3.12%).
+We formulate graph layout optimization as a Reinforcement Learning (RL) problem, where the goal is to learn a policy that iteratively repositions nodes in a 2-D drawing to minimize edge crossings — a central aesthetic criterion in graph visualization. Starting from a force-directed initialization (neato), our RL agent applies node-displacement moves guided by a learned policy. We develop and compare three RL policy architectures — a per-size MLP (RL-MLP), a size-agnostic Graph Convolutional Network (GNN-RL) trained with REINFORCE, and a GATv2 policy trained with PPO (GATv2-PPO) — against four baselines. We additionally introduce four enhancements into GATv2-PPO: (1) Proximal Policy Optimization (PPO) for more stable training; (2) Graph Attention Network v2 (GATv2) replacing fixed GCN normalization with dynamic attention-weighted aggregation; (3) multi-node actions that move two nodes jointly per step; and (4) curriculum learning that begins training on small graphs and progressively scales to larger ones. On 101 test graphs from the Rome collection, our GATv2-PPO achieves a mean relative improvement of −29.79% vs. neato under the official evaluation metric (submitted coordinates; quick-evaluation score: −23.86%), compared to GNN-RL (−23.29%), RL-MLP (−15.49%), SA (−12.04%), and SmartGD (−3.12%).
 
 ---
 
 ## 1. Introduction
 
-Graph visualization is a fundamental tool for making sense of relational data — from social networks and dependency graphs to circuit layouts and biological pathways. A primary measure of layout quality is the number of **edge crossings**: every crossing obscures structure and impedes readability.
+Graph visualization is a fundamental tool for making sense of relational data — from social networks and dependency graphs to circuit layouts and biological pathways. A primary measure of layout quality is the number of edge crossings: every crossing obscures structure and impedes readability.
 
-Formally, given an undirected graph $G = (V, E)$, a graph **layout** assigns 2-D coordinates $x_v \in \mathbb{R}^2$ to each node $v \in V$. Classical methods such as neato and sfdp minimize a differentiable proxy objective, the graph-theoretic *stress*:
+Formally, given an undirected graph $G = (V, E)$, a graph layout assigns 2-D coordinates $x_v \in \mathbb{R}^2$ to each node $v \in V$. Classical methods such as neato and sfdp minimize a differentiable proxy objective, the graph-theoretic *stress*:
 $$\text{Stress}(X) = \sum_{i < j} w_{ij}\bigl(\|x_i - x_j\| - d_{ij}\bigr)^2$$
 where $d_{ij}$ is the shortest-path distance and $w_{ij} = d_{ij}^{-2}$.
 
-However, the edge crossing count $C(X) = \#\{(e_1,e_2)\in E^2 : e_1 \text{ and } e_2 \text{ cross in layout } X\}$ is **non-differentiable** and **combinatorially defined** — it cannot be directly minimized by gradient descent. This motivates a Reinforcement Learning (RL) approach, where a policy learns to make local layout improvements through trial-and-error interaction.
+However, the edge crossing count $C(X) = \#\{(e_1,e_2)\in E^2 : e_1 \text{ and } e_2 \text{ cross in layout } X\}$ is non-differentiable and combinatorially defined — it cannot be directly minimized by gradient descent. This motivates a Reinforcement Learning (RL) approach, where a policy learns to make local layout improvements through trial-and-error interaction.
 
 This paper makes the following contributions:
 
-1. **MDP formulation** of graph layout as a sequential decision process over node positions.
-2. **Three RL policy architectures**: per-size MLP, size-agnostic GCN (REINFORCE), and GATv2 (PPO).
-3. **Four enhancements**: PPO for training stability, GATv2 for richer structural representation, multi-node actions for coordinated improvement, and curriculum learning for better generalization.
-4. **Comprehensive evaluation** on 101 Rome test graphs against four baselines using the official evaluation metric.
+1. MDP formulation of graph layout as a sequential decision process over node positions.
+2. Three RL policy architectures: per-size MLP, size-agnostic GCN (REINFORCE), and GATv2 (PPO).
+3. Four enhancements: PPO for training stability, GATv2 for richer structural representation, multi-node actions for coordinated improvement, and curriculum learning for better generalization.
+4. Comprehensive evaluation on 101 Rome test graphs against four baselines using the official evaluation metric.
 
 ---
 
@@ -39,17 +39,17 @@ We model graph layout optimization as a finite-horizon Markov Decision Process (
 
 The state $s_t$ is the current node coordinate matrix $X_t \in \mathbb{R}^{|V| \times 2}$, augmented with graph-structural features (degree, adjacency) for the GNN-based policies.
 
-**Initial state:** The neato Graphviz layout serves as the starting point. This provides a competitive initialization: neato already minimizes stress, ensuring nodes are neither too crowded nor too spread out, and the RL agent then refines this toward fewer crossings.
+Initial state: The neato Graphviz layout serves as the starting point. This provides a competitive initialization: neato already minimizes stress, ensuring nodes are neither too crowded nor too spread out, and the RL agent then refines this toward fewer crossings.
 
 ### 2.2 Action Space
 
-**Single-node action** (RL-MLP, GNN-RL): At each step the agent selects
+Single-node action (RL-MLP, GNN-RL): At each step the agent selects
 1. A node index $i \sim \text{Categorical}(\pi_\theta(\cdot \mid s_t))$
 2. A displacement $\Delta x_i \sim \mathcal{N}(\mu_\theta(i, s_t),\ \sigma^2 I_2)$
 
 and updates $x_i^{t+1} = x_i^t + \Delta x_i \cdot \text{step\_size}$.
 
-**Multi-node action** (GATv2-PPO): At each step the agent selects $k = 2$ nodes without replacement using multinomial sampling, then samples a displacement for each. Both moves are applied simultaneously:
+Multi-node action (GATv2-PPO): At each step the agent selects $k = 2$ nodes without replacement using multinomial sampling, then samples a displacement for each. Both moves are applied simultaneously:
 $$x_{i_j}^{t+1} = x_{i_j}^t + \Delta x_{i_j} \cdot \text{step\_size}, \quad j = 1, 2$$
 
 Multi-node actions allow the agent to resolve crossing configurations that require coordinated movement — for example, when two edges cross and both endpoints need to be repositioned to eliminate the crossing.
@@ -66,7 +66,7 @@ where $t_{12}, u_{12}$ are parametric intersection coefficients and $\kappa = 10
 
 ### 2.4 Episode Structure
 
-Each episode runs for at most $T = 300$ steps (adaptive: $\max(300,\ 3N / k)$), terminating early if zero crossings are achieved. The **best layout observed during the episode** — not the final layout — is reported as the result. This is important because RL policies may temporarily worsen a layout during exploration.
+Each episode runs for at most $T = 300$ steps (adaptive: $\max(300,\ 3N / k)$), terminating early if zero crossings are achieved. The best layout observed during the episode — not the final layout — is reported as the result. This is important because RL policies may temporarily worsen a layout during exploration.
 
 ---
 
@@ -89,32 +89,32 @@ A 2-layer MLP takes the flattened normalized node coordinates as input:
 $$\text{Input: } [x_1^{\text{norm}}, y_1^{\text{norm}}, \ldots, x_N^{\text{norm}}, y_N^{\text{norm}}] \in \mathbb{R}^{2N}$$
 
 Two output heads share the encoder:
-- **Node head:** Linear$(256) \to \mathbb{R}^N$ (selection logits)
-- **Delta head:** Linear$(256) \to \mathbb{R}^{N \times 2}$ (displacement means)
+- Node head: Linear$(256) \to \mathbb{R}^N$ (selection logits)
+- Delta head: Linear$(256) \to \mathbb{R}^{N \times 2}$ (displacement means)
 
 One model is trained per graph size $N$. This is the simplest RL baseline.
 
-**Limitation:** Cannot generalize across sizes; requires a separate model for every unseen $N$.
+Limitation: Cannot generalize across sizes; requires a separate model for every unseen $N$.
 
 ### 3.3 Architecture 2: GCN Policy (GNN-RL)
 
-To overcome the per-size limitation, we design a **size-agnostic** Graph Convolutional Network (Kipf & Welling, 2017) policy.
+To overcome the per-size limitation, we design a size-agnostic Graph Convolutional Network (Kipf & Welling, 2017) policy.
 
-**Node features** (per node): $f_v = [x_v^{\text{norm}},\ y_v^{\text{norm}},\ \deg(v)^{\text{norm}}] \in \mathbb{R}^3$
+Node features (per node): $f_v = [x_v^{\text{norm}},\ y_v^{\text{norm}},\ \deg(v)^{\text{norm}}] \in \mathbb{R}^3$
 
-**GCN layer** (with residual connection):
+GCN layer (with residual connection):
 $$h_v^{(k+1)} = h_v^{(k)} + \text{ReLU}\!\left(\text{LayerNorm}\!\left(W \cdot \hat{A} h_v^{(k)}\right)\right)$$
 where $\hat{A} = D^{-1/2}(A + I)D^{-1/2}$ is the symmetrically normalized adjacency with self-loops.
 
-**Architecture:** input projection (3→128, ReLU) → 3 GCN layers (hidden=128, residual) → node head [128→64→1] + delta head [128→64→2].
+Architecture: input projection (3→128, ReLU) → 3 GCN layers (hidden=128, residual) → node head [128→64→1] + delta head [128→64→2].
 
-The same model handles **any** graph size — the GCN operates on node features and the adjacency matrix, both of which scale with $N$ without changing any weight dimensions.
+The same model handles any graph size — the GCN operates on node features and the adjacency matrix, both of which scale with $N$ without changing any weight dimensions.
 
 ### 3.4 Architecture 3: GATv2 Policy with PPO Value Head (GATv2-PPO)
 
-We replace the fixed GCN normalization with **Graph Attention Network v2** (GATv2; Brody et al., 2022), which computes dynamic, content-dependent attention weights.
+We replace the fixed GCN normalization with Graph Attention Network v2 (GATv2; Brody et al., 2022), which computes dynamic, content-dependent attention weights.
 
-**GATv2 layer** (multi-head, $H = 4$ heads, head dimension $D = 32$):
+GATv2 layer (multi-head, $H = 4$ heads, head dimension $D = 32$):
 
 $$e_{ij}^{(h)} = \mathbf{a}^{(h)\top} \text{LeakyReLU}\!\left(W_L^{(h)} h_i + W_R^{(h)} h_j\right)$$
 $$\alpha_{ij}^{(h)} = \frac{\exp(e_{ij}^{(h)})}{\sum_{k \in \mathcal{N}(i) \cup \{i\}} \exp(e_{ik}^{(h)})}$$
@@ -122,41 +122,41 @@ $$h_i' = \text{ReLU}\!\left(\text{LayerNorm}\!\left(\bigg\|_{h=1}^H \sum_{j \in 
 
 where $\|$ denotes multi-head concatenation and $\mathcal{N}(i)$ is the neighborhood of node $i$.
 
-**Key advantage over GCN:** The GCN aggregates with fixed weights $\hat{A}_{ij} = 1/\sqrt{d_i d_j}$ — entirely determined by degree. GATv2 learns *which* neighbors matter for crossing prediction from the current node features, adapting attention based on the layout state at each step.
+Key advantage over GCN: The GCN aggregates with fixed weights $\hat{A}_{ij} = 1/\sqrt{d_i d_j}$ — entirely determined by degree. GATv2 learns *which* neighbors matter for crossing prediction from the current node features, adapting attention based on the layout state at each step.
 
-**Value head (critic):** A graph-level mean pooling of node embeddings feeds a small MLP:
+Value head (critic): A graph-level mean pooling of node embeddings feeds a small MLP:
 $$V(s) = \text{MLP}\!\left(\frac{1}{|V|} \sum_{v \in V} h_v^{(L)}\right) \in \mathbb{R}$$
 This value estimate is required by the PPO critic.
 
-**Full architecture:** 3 → 128 (input projection) → 3 × GATv2(128, H=4) → node head + delta head + value head.
+Full architecture: 3 → 128 (input projection) → 3 × GATv2(128, H=4) → node head + delta head + value head.
 
 ### 3.5 Training: REINFORCE (Baseline)
 
 Both RL-MLP and GNN-RL use the REINFORCE policy gradient algorithm:
 
-**Discounted returns:** $G_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$, $\gamma = 0.99$
+Discounted returns: $G_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$, $\gamma = 0.99$
 
-**Normalised returns** (variance reduction): $\hat{G}_t = \dfrac{G_t - \bar{G}}{\text{std}(G) + \epsilon}$
+Normalised returns (variance reduction): $\hat{G}_t = \dfrac{G_t - \bar{G}}{\text{std}(G) + \epsilon}$
 
-**Loss:**
+Loss:
 $$\mathcal{L}(\theta) = -\sum_t \log \pi_\theta(a_t \mid s_t) \cdot \hat{G}_t - \lambda_H \sum_t H(\pi_\theta(\cdot \mid s_t))$$
 with entropy coefficient $\lambda_H = 0.01$. Gradient clipping: $\|\nabla\theta\|_2 \leq 1.0$.
 
 ### 3.6 Training: PPO with GAE (GATv2-PPO)
 
 Proximal Policy Optimization (PPO; Schulman et al., 2017) improves upon REINFORCE in two key ways:
-- **Clipped surrogate:** prevents destructively large policy updates
-- **Value function baseline:** reduces gradient variance via the critic
+- Clipped surrogate: prevents destructively large policy updates
+- Value function baseline: reduces gradient variance via the critic
 
-**Generalized Advantage Estimation (GAE):**
+Generalized Advantage Estimation (GAE):
 $$\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$$
 $$\hat{A}_t = \sum_{\ell=0}^{T-t} (\gamma \lambda)^\ell \delta_{t+\ell}, \qquad \lambda = 0.95$$
 
-**PPO clipped surrogate objective:**
+PPO clipped surrogate objective:
 $$r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}, \qquad
 L^{\text{CLIP}}(\theta) = \mathbb{E}_t\!\left[\min\!\left(r_t \hat{A}_t,\ \text{clip}(r_t, 1{-}\varepsilon, 1{+}\varepsilon)\hat{A}_t\right)\right]$$
 
-**Full PPO loss:**
+Full PPO loss:
 $$\mathcal{L}(\theta) = -L^{\text{CLIP}}(\theta) + c_1 L^{\text{VF}}(\theta) - c_2 H(\pi_\theta)$$
 with $\varepsilon = 0.2$, $c_1 = 0.5$, $c_2 = 0.01$. Each collected episode is reused for $K = 4$ gradient updates. Gradient clipping: $\|\nabla\theta\|_2 \leq 0.5$.
 
@@ -172,7 +172,7 @@ Training begins on small, simple graphs and progressively introduces larger ones
 | 50% – 75%         | $N \leq 75$    |
 | 75% – 100%        | $N \leq 100$   |
 
-**Motivation:** Small graphs have fewer crossings and shorter episodes. Early in training, when the policy is nearly random, large graphs produce overwhelming noise in the reward signal. Starting with manageable cases lets the policy learn basic displacement heuristics before encountering denser, harder graphs, improving both convergence speed and final performance.
+Motivation: Small graphs have fewer crossings and shorter episodes. Early in training, when the policy is nearly random, large graphs produce overwhelming noise in the reward signal. Starting with manageable cases lets the policy learn basic displacement heuristics before encountering denser, harder graphs, improving both convergence speed and final performance.
 
 ---
 
@@ -180,10 +180,10 @@ Training begins on small, simple graphs and progressively introduces larger ones
 
 | Method | Description |
 |--------|-------------|
-| **neato** | Graphviz stress-minimization layout (primary baseline) |
-| **sfdp** | Graphviz scalable force-directed placement |
-| **SmartGD** | State-of-the-art GNN-based layout model; crossings from the GraphDrawingBenchmark |
-| **SA** | Simulated Annealing from neato start; 8,000 single-node moves, $T_0 = 50$, $\alpha = 0.9995$ |
+| neato | Graphviz stress-minimization layout (primary baseline) |
+| sfdp | Graphviz scalable force-directed placement |
+| SmartGD | State-of-the-art GNN-based layout model; crossings from the GraphDrawingBenchmark |
+| SA | Simulated Annealing from neato start; 8,000 single-node moves, $T_0 = 50$, $\alpha = 0.9995$ |
 
 ---
 
@@ -191,16 +191,16 @@ Training begins on small, simple graphs and progressively introduces larger ones
 
 ### 5.1 Dataset
 
-The **Rome graph collection** contains 11,534 undirected graphs of varying sizes and densities, derived from real-world data (mostly $N \leq 100$ nodes).
+The Rome graph collection contains 11,534 undirected graphs of varying sizes and densities, derived from real-world data (mostly $N \leq 100$ nodes).
 
-- **Training set:** grafo0001 – grafo9999 (up to 2,000 graphs used; GATv2-PPO trained on $N \leq 100$; per-size MLPs use graphs of matching size)
-- **Test set:** grafo10000 – grafo10102 (101 graphs, $N \in [30, 99]$, never seen during training; the official range grafo10000–grafo10100 yields 99 graphs since grafo10073 and grafo10094 do not exist in the Rome collection — we supplement with grafo10101 and grafo10102 to reach 101 total)
+- Training set: grafo0001 – grafo9999 (up to 2,000 graphs used; GATv2-PPO trained on $N \leq 100$; per-size MLPs use graphs of matching size)
+- Test set: grafo10000 – grafo10102 (101 graphs, $N \in [30, 99]$, never seen during training; the official range grafo10000–grafo10100 yields 99 graphs since grafo10073 and grafo10094 do not exist in the Rome collection — we supplement with grafo10101 and grafo10102 to reach 101 total)
 
 The test set spans a range of sizes and densities, with edge counts ranging from $|E| = 29$ to $|E| = 160$.
 
 ### 5.2 Evaluation Metric
 
-Following the project specification, we use **per-graph relative improvement vs. neato**, averaged over the test set:
+Following the project specification, we use per-graph relative improvement vs. neato, averaged over the test set:
 $$\text{Improvement} = \frac{1}{|\mathcal{T}|} \sum_{g \in \mathcal{T}} \frac{C_g^{\text{ours}} - C_g^{\text{neato}}}{\max(C_g^{\text{ours}},\ C_g^{\text{neato}})}$$
 Negative values indicate fewer crossings than neato (better). A value of $-0.2979$ means the method is 29.79% better than neato on average.
 
@@ -215,11 +215,11 @@ Negative values indicate fewer crossings than neato (better). A value of $-0.297
 | RL-MLP | 26.59 | −15.49% |
 | GNN-RL | 25.43 | −23.29% |
 | GATv2-PPO *(quick eval)* | 24.94 | −23.86% |
-| **GATv2-PPO** *(submitted)* | **23.80** | **−29.79%** |
+| GATv2-PPO *(submitted)* | 23.80 | −29.79% |
 
 *Quick eval uses N\_TRIALS=5, MAX\_STEPS=300 for fair comparison with other baselines. Submitted coordinates use MAX\_TRIALS=50, MAX\_STEPS=500 with SA post-processing refinement (test-time search budget increase; no retraining).*
 
-GATv2-PPO achieves the best result across all methods. The progression from MLP → GNN-RL → GATv2-PPO demonstrates that each architectural and algorithmic improvement contributes: structural inductive bias (GCN) provides the largest single gain, and the combination of PPO, GATv2, multi-node actions, and curriculum learning brings a further improvement over GNN-RL. With increased test-time search (50 trials, 500 steps, SA refinement), the submitted coordinates achieve **−29.79%**, a 6 percentage point gain over the quick-eval score with no additional training.
+GATv2-PPO achieves the best result across all methods. The progression from MLP → GNN-RL → GATv2-PPO demonstrates that each architectural and algorithmic improvement contributes: structural inductive bias (GCN) provides the largest single gain, and the combination of PPO, GATv2, multi-node actions, and curriculum learning brings a further improvement over GNN-RL. With increased test-time search (50 trials, 500 steps, SA refinement), the submitted coordinates achieve −29.79%, a 6 percentage point gain over the quick-eval score with no additional training.
 
 Notably, SmartGD — a specialized deep learning system pre-trained on the GraphDrawingBenchmark — is outperformed by all three of our RL methods. Our methods optimize the crossing objective directly; SmartGD uses a different training signal and is not specifically designed to minimize crossings.
 
@@ -229,19 +229,19 @@ Representative test cases illustrating the range of improvement (GATv2-PPO colum
 
 | Graph | $N$ | neato | sfdp | SmartGD | SA | RL-MLP | GNN-RL | GATv2-PPO |
 |-------|:---:|:-----:|:----:|:-------:|:--:|:------:|:------:|:---------:|
-| grafo10008 | 42 | 30 | 28 | 29 | 25 | 25 | 24 | **19** |
-| grafo10064 | 39 | 26 | 27 | 27 | 23 | 21 | 19 | **17** |
-| grafo10028 | 96 | 104 | 111 | 106 | 95 | 93 | 89 | **80** |
-| grafo10084 | 97 | 182 | 184 | 191 | 181 | 168 | 164 | **154** |
-| grafo10099 | 94 | 149 | 179 | 165 | 141 | 137 | 133 | **124** |
-| grafo10061 | 99 | 103 | 93 | 83 | 99 | 95 | 91 | **84** |
-| grafo10086 | 34 | 1 | 1 | 1 | 0 | 0 | 0 | **0** |
+| grafo10008 | 42 | 30 | 28 | 29 | 25 | 25 | 24 | 19 |
+| grafo10064 | 39 | 26 | 27 | 27 | 23 | 21 | 19 | 17 |
+| grafo10028 | 96 | 104 | 111 | 106 | 95 | 93 | 89 | 80 |
+| grafo10084 | 97 | 182 | 184 | 191 | 181 | 168 | 164 | 154 |
+| grafo10099 | 94 | 149 | 179 | 165 | 141 | 137 | 133 | 124 |
+| grafo10061 | 99 | 103 | 93 | 83 | 99 | 95 | 91 | 84 |
+| grafo10086 | 34 | 1 | 1 | 1 | 0 | 0 | 0 | 0 |
 
 Several observations:
 - On small-to-medium graphs ($N \leq 42$), GATv2-PPO consistently outperforms all methods, including classical baselines and GNN-RL.
 - On large dense graphs ($N \geq 90$), GATv2-PPO achieves the largest absolute crossing reductions: −28 on grafo10084, −25 on grafo10099, −19 on grafo10028. The combination of attention-based representation, PPO training, and extended test-time search generalizes well to harder instances.
 - SmartGD underperforms on large dense graphs, likely because its training objectives differ from direct crossing minimization.
-- grafo10086 ($N = 34$): GATv2-PPO achieves **0 crossings** (neato = 1), finding a planar embedding.
+- grafo10086 ($N = 34$): GATv2-PPO achieves 0 crossings (neato = 1), finding a planar embedding.
 
 ### 5.5 Visualization
 
@@ -253,7 +253,7 @@ Side-by-side Neato vs. GATv2-PPO layouts for all 101 test graphs are provided in
 
 ### Why GNN-RL Outperforms RL-MLP
 
-The key insight is **structural inductive bias**. The GCN aggregates information from each node's neighbors through message passing, enabling the policy to reason about crossing-prone neighborhoods. A node surrounded by many crossing edges will receive strong signals from its neighbors, making it more likely to be selected for movement. The MLP, operating on flat coordinates, must learn this structural reasoning from scratch for every graph size.
+The key insight is structural inductive bias. The GCN aggregates information from each node's neighbors through message passing, enabling the policy to reason about crossing-prone neighborhoods. A node surrounded by many crossing edges will receive strong signals from its neighbors, making it more likely to be selected for movement. The MLP, operating on flat coordinates, must learn this structural reasoning from scratch for every graph size.
 
 Additionally, GNN-RL trains on 2,000 diverse graphs simultaneously, while each per-size MLP uses only 60–80 training graphs of its specific size. The larger and more diverse training set further helps the GNN generalize.
 
@@ -261,13 +261,13 @@ Additionally, GNN-RL trains on 2,000 diverse graphs simultaneously, while each p
 
 The improvement from GNN-RL to GATv2-PPO comes from four compounding factors:
 
-**PPO vs REINFORCE:** REINFORCE uses the full episode return as advantage, which has high variance due to cumulative reward discounting. PPO with GAE reduces this variance via the learned value function baseline. For our task, where episode rewards are small and noisy (crossing reductions of 0–3 per step), high-variance gradients cause instability. PPO's clipping additionally prevents the policy from being updated too aggressively on any single episode.
+PPO vs REINFORCE: REINFORCE uses the full episode return as advantage, which has high variance due to cumulative reward discounting. PPO with GAE reduces this variance via the learned value function baseline. For our task, where episode rewards are small and noisy (crossing reductions of 0–3 per step), high-variance gradients cause instability. PPO's clipping additionally prevents the policy from being updated too aggressively on any single episode.
 
-**GATv2 vs GCN:** In a GCN, the contribution of neighbor $j$ to node $i$ is fixed at $1/\sqrt{d_i d_j}$, depending only on degree. In GATv2, the attention weight $\alpha_{ij}$ depends on the current features of both $i$ and $j$, allowing the model to focus on neighbors that are currently most relevant for predicting the displacement direction.
+GATv2 vs GCN: In a GCN, the contribution of neighbor $j$ to node $i$ is fixed at $1/\sqrt{d_i d_j}$, depending only on degree. In GATv2, the attention weight $\alpha_{ij}$ depends on the current features of both $i$ and $j$, allowing the model to focus on neighbors that are currently most relevant for predicting the displacement direction.
 
-**Multi-node actions:** Single-node moves can become trapped when two edges cross and both pairs of endpoints need to be moved simultaneously to resolve the crossing. By selecting 2 nodes jointly, the agent can make coordinated improvements unreachable by greedy single-node moves.
+Multi-node actions: Single-node moves can become trapped when two edges cross and both pairs of endpoints need to be moved simultaneously to resolve the crossing. By selecting 2 nodes jointly, the agent can make coordinated improvements unreachable by greedy single-node moves.
 
-**Curriculum learning:** Starting with small graphs ensures that early training provides clear learning signal and establishes basic skills, leading to better convergence and generalization to larger graphs.
+Curriculum learning: Starting with small graphs ensures that early training provides clear learning signal and establishes basic skills, leading to better convergence and generalization to larger graphs.
 
 ### Effect of Reward Shaping
 
@@ -281,11 +281,11 @@ Our crossing evaluation runs in $O(|E|^2)$ time: for dense graphs ($|E| = 150$),
 
 ## 7. Conclusion
 
-We demonstrated that Reinforcement Learning can effectively reduce edge crossings in graph layouts. Starting from a simple per-size MLP baseline (−15.49% vs. neato), we progressed through a size-agnostic GCN policy with REINFORCE (−23.29%) to a GATv2 policy with PPO, multi-node actions, and curriculum learning. Under a fixed quick-evaluation budget (N\_TRIALS=5), GATv2-PPO achieves −23.86%; with increased test-time search (N\_TRIALS=50, MAX\_STEPS=500, SA post-processing), the submitted coordinates achieve **−29.79%**, the best result across all methods evaluated on 101 Rome test graphs.
+We demonstrated that Reinforcement Learning can effectively reduce edge crossings in graph layouts. Starting from a simple per-size MLP baseline (−15.49% vs. neato), we progressed through a size-agnostic GCN policy with REINFORCE (−23.29%) to a GATv2 policy with PPO, multi-node actions, and curriculum learning. Under a fixed quick-evaluation budget (N\_TRIALS=5), GATv2-PPO achieves −23.86%; with increased test-time search (N\_TRIALS=50, MAX\_STEPS=500, SA post-processing), the submitted coordinates achieve −29.79%, the best result across all methods evaluated on 101 Rome test graphs.
 
-The core lessons are twofold. First, **graph structure is a powerful inductive bias**: a policy that can read the adjacency information through message passing can identify crossing-prone nodes and apply appropriate displacements, transferring this skill across graph sizes without retraining. Second, **test-time search amplifies learned policies**: the same trained model, given more rollout budget at inference, delivers substantially better results — a 6 percentage point gain over the quick-evaluation score with zero additional training. The four enhancements (PPO, GATv2, multi-node, curriculum) each address a concrete limitation and together push performance beyond what GCN+REINFORCE alone achieves.
+The core lessons are twofold. First, graph structure is a powerful inductive bias: a policy that can read the adjacency information through message passing can identify crossing-prone nodes and apply appropriate displacements, transferring this skill across graph sizes without retraining. Second, test-time search amplifies learned policies: the same trained model, given more rollout budget at inference, delivers substantially better results — a 6 percentage point gain over the quick-evaluation score with zero additional training. The four enhancements (PPO, GATv2, multi-node, curriculum) each address a concrete limitation and together push performance beyond what GCN+REINFORCE alone achieves.
 
-**Reproducibility:** All code is available at **https://github.com/YifanCai0309/RL-Project**. To train the GATv2-PPO model: `python train_gnn_ppo.py`. To evaluate all methods: `python evaluate_full.py`. To generate submission coordinates: `python generate_coords.py coords_submission/`. The final submitted node coordinates for all 101 test graphs are packaged in `coords_submission.tar.gz` at the repository root.
+Reproducibility: All code is available at https://github.com/YifanCai0309/RL-Project. To train the GATv2-PPO model: `python train_gnn_ppo.py`. To evaluate all methods: `python evaluate_full.py`. To generate submission coordinates: `python generate_coords.py coords_submission/`. The final submitted node coordinates for all 101 test graphs are packaged in `coords_submission.tar.gz` at the repository root.
 
 ---
 
@@ -311,7 +311,7 @@ The core lessons are twofold. First, **graph structure is a powerful inductive b
 | GCNLayer × 3 | [N, 128] | [N, 128] | 128×128 + 128 = 16,512 each |
 | node_head | [N, 128] | [N, 1] | 128×64 + 64×1 = 8,256 |
 | delta_head | [N, 128] | [N, 2] | 128×64 + 64×2 = 8,320 |
-| **Total** | | | **≈ 66K parameters** |
+| Total | | | ≈ 66K parameters |
 
 ### A.2 GATv2Policy (PPO)
 
@@ -324,7 +324,7 @@ The core lessons are twofold. First, **graph structure is a powerful inductive b
 | node_head | [N, 128] | [N, 1] | 8,256 |
 | delta_head | [N, 128] | [N, 2] | 8,320 |
 | value_head | [128] | [1] | 128×64 + 64×1 = 8,256 |
-| **Total** | | | **≈ 174K parameters** |
+| Total | | | ≈ 174K parameters |
 
 ### A.3 Training Hyperparameters
 
@@ -355,104 +355,104 @@ PPO\* = submitted coordinates (MAX\_TRIALS=50, MAX\_STEPS=500 + SA post-processi
 
 | Graph | N | neato | sfdp | SmGD | SA | MLP | GNN | PPO\* |
 |-------|:-:|:-----:|:----:|:----:|:--:|:---:|:---:|:-----:|
-| grafo10000.38 | 38 | 14 | 9 | 13 | 10 | 8 | 9 | **7** |
+| grafo10000.38 | 38 | 14 | 9 | 13 | 10 | 8 | 9 | 7 |
 | grafo10001.32 | 32 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
-| grafo10002.40 | 40 | 4 | 4 | 2 | 4 | 4 | 4 | **3** |
+| grafo10002.40 | 40 | 4 | 4 | 2 | 4 | 4 | 4 | 3 |
 | grafo10003.40 | 40 | 17 | 8 | 10 | 9 | 10 | 9 | 9 |
-| grafo10004.32 | 32 | 4 | 4 | 5 | 3 | 3 | 3 | **2** |
+| grafo10004.32 | 32 | 4 | 4 | 5 | 3 | 3 | 3 | 2 |
 | grafo10005.39 | 39 | 15 | 15 | 17 | 14 | 12 | 11 | 11 |
 | grafo10006.98 | 98 | 136 | 100 | 133 | 127 | 115 | 115 | 109 |
 | grafo10007.31 | 31 | 2 | 0 | 0 | 1 | 2 | 1 | 1 |
-| grafo10008.42 | 42 | 30 | 28 | 29 | 25 | 25 | 24 | **19** |
+| grafo10008.42 | 42 | 30 | 28 | 29 | 25 | 25 | 24 | 19 |
 | grafo10009.31 | 31 | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
-| grafo10010.39 | 39 | 11 | 16 | 12 | 10 | 10 | 9 | **9** |
+| grafo10010.39 | 39 | 11 | 16 | 12 | 10 | 10 | 9 | 9 |
 | grafo10011.31 | 31 | 2 | 1 | 2 | 2 | 2 | 1 | 1 |
-| grafo10012.40 | 40 | 12 | 12 | 13 | 11 | 9 | 9 | **8** |
+| grafo10012.40 | 40 | 12 | 12 | 13 | 11 | 9 | 9 | 8 |
 | grafo10013.31 | 31 | 2 | 1 | 1 | 1 | 2 | 1 | 1 |
 | grafo10014.39 | 39 | 13 | 18 | 17 | 12 | 12 | 11 | 11 |
-| grafo10015.39 | 39 | 3 | 5 | 5 | 3 | 3 | 3 | **2** |
+| grafo10015.39 | 39 | 3 | 5 | 5 | 3 | 3 | 3 | 2 |
 | grafo10016.39 | 39 | 20 | 16 | 14 | 19 | 18 | 15 | 15 |
-| grafo10017.96 | 96 | 113 | 118 | 110 | 111 | 101 | 101 | **97** |
-| grafo10018.31 | 31 | 4 | 3 | 5 | 4 | 4 | 4 | **3** |
-| grafo10019.38 | 38 | 2 | 2 | 3 | 2 | 2 | 1 | **1** |
-| grafo10020.38 | 38 | 17 | 24 | 21 | 16 | 14 | 14 | **13** |
-| grafo10021.39 | 39 | 10 | 9 | 8 | 8 | 6 | 8 | **6** |
+| grafo10017.96 | 96 | 113 | 118 | 110 | 111 | 101 | 101 | 97 |
+| grafo10018.31 | 31 | 4 | 3 | 5 | 4 | 4 | 4 | 3 |
+| grafo10019.38 | 38 | 2 | 2 | 3 | 2 | 2 | 1 | 1 |
+| grafo10020.38 | 38 | 17 | 24 | 21 | 16 | 14 | 14 | 13 |
+| grafo10021.39 | 39 | 10 | 9 | 8 | 8 | 6 | 8 | 6 |
 | grafo10022.31 | 31 | 2 | 1 | 1 | 1 | 2 | 1 | 1 |
 | grafo10023.39 | 39 | 9 | 14 | 9 | 9 | 9 | 8 | 8 |
-| grafo10024.32 | 32 | 5 | 3 | 5 | 5 | 5 | 3 | **3** |
+| grafo10024.32 | 32 | 5 | 3 | 5 | 5 | 5 | 3 | 3 |
 | grafo10025.31 | 31 | 4 | 6 | 5 | 4 | 3 | 3 | 3 |
 | grafo10026.32 | 32 | 4 | 5 | 6 | 3 | 3 | 3 | 3 |
-| grafo10027.38 | 38 | 14 | 9 | 10 | 13 | 12 | 11 | **9** |
-| grafo10028.96 | 96 | 104 | 111 | 106 | 95 | 93 | 89 | **80** |
-| grafo10029.40 | 40 | 18 | 17 | 16 | 17 | 14 | 14 | **13** |
-| grafo10030.38 | 38 | 14 | 13 | 14 | 13 | 12 | 11 | **11** |
-| grafo10031.38 | 38 | 12 | 13 | 14 | 10 | 10 | 10 | **9** |
-| grafo10032.38 | 38 | 9 | 9 | 9 | 6 | 7 | 7 | **6** |
+| grafo10027.38 | 38 | 14 | 9 | 10 | 13 | 12 | 11 | 9 |
+| grafo10028.96 | 96 | 104 | 111 | 106 | 95 | 93 | 89 | 80 |
+| grafo10029.40 | 40 | 18 | 17 | 16 | 17 | 14 | 14 | 13 |
+| grafo10030.38 | 38 | 14 | 13 | 14 | 13 | 12 | 11 | 11 |
+| grafo10031.38 | 38 | 12 | 13 | 14 | 10 | 10 | 10 | 9 |
+| grafo10032.38 | 38 | 9 | 9 | 9 | 6 | 7 | 7 | 6 |
 | grafo10033.31 | 31 | 2 | 1 | 2 | 1 | 2 | 1 | 1 |
-| grafo10034.40 | 40 | 18 | 13 | 16 | 16 | 16 | 16 | **15** |
-| grafo10035.38 | 38 | 7 | 6 | 6 | 6 | 4 | 5 | **4** |
+| grafo10034.40 | 40 | 18 | 13 | 16 | 16 | 16 | 16 | 15 |
+| grafo10035.38 | 38 | 7 | 6 | 6 | 6 | 4 | 5 | 4 |
 | grafo10036.31 | 31 | 2 | 1 | 1 | 1 | 1 | 1 | 1 |
 | grafo10037.39 | 39 | 14 | 14 | 12 | 10 | 9 | 8 | 10 |
-| grafo10038.38 | 38 | 7 | 6 | 8 | 6 | 6 | 5 | **5** |
-| grafo10039.98 | 98 | 80 | 65 | 72 | 71 | 69 | 66 | **58** |
+| grafo10038.38 | 38 | 7 | 6 | 8 | 6 | 6 | 5 | 5 |
+| grafo10039.98 | 98 | 80 | 65 | 72 | 71 | 69 | 66 | 58 |
 | grafo10040.32 | 32 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | grafo10041.41 | 41 | 19 | 11 | 16 | 16 | 14 | 12 | 12 |
 | grafo10042.39 | 39 | 14 | 11 | 17 | 14 | 11 | 10 | 11 |
-| grafo10043.32 | 32 | 8 | 6 | 5 | 7 | 8 | 7 | **7** |
-| grafo10044.38 | 38 | 10 | 9 | 11 | 10 | 9 | 6 | **5** |
+| grafo10043.32 | 32 | 8 | 6 | 5 | 7 | 8 | 7 | 7 |
+| grafo10044.38 | 38 | 10 | 9 | 11 | 10 | 9 | 6 | 5 |
 | grafo10045.38 | 38 | 9 | 10 | 8 | 8 | 8 | 7 | 7 |
-| grafo10046.40 | 40 | 7 | 11 | 8 | 7 | 6 | 6 | **6** |
-| grafo10047.32 | 32 | 4 | 2 | 4 | 3 | 2 | 2 | **1** |
+| grafo10046.40 | 40 | 7 | 11 | 8 | 7 | 6 | 6 | 6 |
+| grafo10047.32 | 32 | 4 | 2 | 4 | 3 | 2 | 2 | 1 |
 | grafo10048.32 | 32 | 5 | 8 | 2 | 5 | 5 | 4 | 4 |
-| grafo10049.39 | 39 | 9 | 9 | 8 | 8 | 9 | 7 | **6** |
-| grafo10050.97 | 97 | 117 | 105 | 118 | 113 | 101 | 99 | **92** |
-| grafo10051.30 | 30 | 4 | 3 | 3 | 3 | 3 | 3 | **2** |
+| grafo10049.39 | 39 | 9 | 9 | 8 | 8 | 9 | 7 | 6 |
+| grafo10050.97 | 97 | 117 | 105 | 118 | 113 | 101 | 99 | 92 |
+| grafo10051.30 | 30 | 4 | 3 | 3 | 3 | 3 | 3 | 2 |
 | grafo10052.32 | 32 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| grafo10053.32 | 32 | 4 | 4 | 7 | 4 | 3 | 3 | **3** |
+| grafo10053.32 | 32 | 4 | 4 | 7 | 4 | 3 | 3 | 3 |
 | grafo10054.40 | 40 | 13 | 14 | 20 | 12 | 11 | 11 | 11 |
-| grafo10055.40 | 40 | 23 | 17 | 14 | 20 | 18 | 17 | **14** |
+| grafo10055.40 | 40 | 23 | 17 | 14 | 20 | 18 | 17 | 14 |
 | grafo10056.31 | 31 | 2 | 1 | 5 | 1 | 1 | 1 | 1 |
-| grafo10057.40 | 40 | 39 | 33 | 32 | 38 | 34 | 33 | **30** |
+| grafo10057.40 | 40 | 39 | 33 | 32 | 38 | 34 | 33 | 30 |
 | grafo10058.32 | 32 | 3 | 10 | 4 | 3 | 3 | 3 | 3 |
-| grafo10059.32 | 32 | 3 | 3 | 3 | 3 | 3 | 3 | **2** |
-| grafo10060.90 | 90 | 50 | 48 | 54 | 47 | 43 | 42 | **40** |
-| grafo10061.99 | 99 | 103 | 93 | 83 | 99 | 95 | 91 | **84** |
+| grafo10059.32 | 32 | 3 | 3 | 3 | 3 | 3 | 3 | 2 |
+| grafo10060.90 | 90 | 50 | 48 | 54 | 47 | 43 | 42 | 40 |
+| grafo10061.99 | 99 | 103 | 93 | 83 | 99 | 95 | 91 | 84 |
 | grafo10062.39 | 39 | 6 | 5 | 4 | 6 | 5 | 3 | 4 |
 | grafo10063.31 | 31 | 2 | 1 | 4 | 1 | 1 | 1 | 1 |
-| grafo10064.39 | 39 | 26 | 27 | 27 | 23 | 21 | 19 | **17** |
-| grafo10065.32 | 32 | 3 | 3 | 6 | 3 | 3 | 3 | **2** |
-| grafo10066.40 | 40 | 19 | 23 | 22 | 15 | 15 | 15 | **13** |
+| grafo10064.39 | 39 | 26 | 27 | 27 | 23 | 21 | 19 | 17 |
+| grafo10065.32 | 32 | 3 | 3 | 6 | 3 | 3 | 3 | 2 |
+| grafo10066.40 | 40 | 19 | 23 | 22 | 15 | 15 | 15 | 13 |
 | grafo10067.41 | 41 | 5 | 1 | 2 | 5 | 5 | 4 | 4 |
 | grafo10068.31 | 31 | 2 | 1 | 2 | 1 | 2 | 1 | 1 |
 | grafo10069.40 | 40 | 14 | 17 | 10 | 12 | 10 | 9 | 10 |
 | grafo10070.32 | 32 | 1 | 5 | 1 | 1 | 1 | 1 | 1 |
-| grafo10071.40 | 40 | 11 | 16 | 17 | 11 | 9 | 9 | **9** |
-| grafo10072.97 | 97 | 110 | 95 | 118 | 107 | 96 | 92 | **85** |
-| grafo10074.90 | 90 | 153 | 141 | 130 | 143 | 134 | 125 | **117** |
+| grafo10071.40 | 40 | 11 | 16 | 17 | 11 | 9 | 9 | 9 |
+| grafo10072.97 | 97 | 110 | 95 | 118 | 107 | 96 | 92 | 85 |
+| grafo10074.90 | 90 | 153 | 141 | 130 | 143 | 134 | 125 | 117 |
 | grafo10075.31 | 31 | 1 | 2 | 2 | 1 | 1 | 1 | 1 |
 | grafo10076.90 | 90 | 141 | 130 | 126 | 131 | 124 | 118 | 117 |
 | grafo10077.31 | 31 | 2 | 1 | 1 | 1 | 2 | 1 | 1 |
-| grafo10078.40 | 40 | 9 | 10 | 14 | 9 | 8 | 8 | **7** |
-| grafo10079.41 | 41 | 25 | 22 | 24 | 20 | 19 | 18 | **18** |
+| grafo10078.40 | 40 | 9 | 10 | 14 | 9 | 8 | 8 | 7 |
+| grafo10079.41 | 41 | 25 | 22 | 24 | 20 | 19 | 18 | 18 |
 | grafo10080.38 | 38 | 13 | 8 | 10 | 12 | 10 | 11 | 10 |
-| grafo10081.34 | 34 | 9 | 10 | 7 | 8 | 7 | 6 | **5** |
-| grafo10082.98 | 98 | 67 | 49 | 64 | 61 | 60 | 60 | **53** |
-| grafo10083.38 | 38 | 11 | 18 | 10 | 10 | 9 | 8 | **7** |
-| grafo10084.97 | 97 | 182 | 184 | 191 | 181 | 168 | 164 | **154** |
-| grafo10085.35 | 35 | 7 | 5 | 4 | 7 | 4 | 5 | **3** |
-| grafo10086.34 | 34 | 1 | 1 | 1 | 0 | 0 | 0 | **0** |
-| grafo10087.39 | 39 | 12 | 10 | 11 | 10 | 8 | 7 | **8** |
+| grafo10081.34 | 34 | 9 | 10 | 7 | 8 | 7 | 6 | 5 |
+| grafo10082.98 | 98 | 67 | 49 | 64 | 61 | 60 | 60 | 53 |
+| grafo10083.38 | 38 | 11 | 18 | 10 | 10 | 9 | 8 | 7 |
+| grafo10084.97 | 97 | 182 | 184 | 191 | 181 | 168 | 164 | 154 |
+| grafo10085.35 | 35 | 7 | 5 | 4 | 7 | 4 | 5 | 3 |
+| grafo10086.34 | 34 | 1 | 1 | 1 | 0 | 0 | 0 | 0 |
+| grafo10087.39 | 39 | 12 | 10 | 11 | 10 | 8 | 7 | 8 |
 | grafo10088.39 | 39 | 17 | 16 | 13 | 14 | 14 | 14 | 14 |
-| grafo10089.37 | 37 | 12 | 19 | 12 | 11 | 10 | 8 | **7** |
-| grafo10090.97 | 97 | 30 | 35 | 31 | 30 | 25 | 25 | **23** |
-| grafo10091.96 | 96 | 72 | 70 | 67 | 62 | 63 | 60 | **54** |
-| grafo10092.97 | 97 | 91 | 121 | 95 | 91 | 81 | 80 | **77** |
+| grafo10089.37 | 37 | 12 | 19 | 12 | 11 | 10 | 8 | 7 |
+| grafo10090.97 | 97 | 30 | 35 | 31 | 30 | 25 | 25 | 23 |
+| grafo10091.96 | 96 | 72 | 70 | 67 | 62 | 63 | 60 | 54 |
+| grafo10092.97 | 97 | 91 | 121 | 95 | 91 | 81 | 80 | 77 |
 | grafo10093.98 | 98 | 109 | 117 | 112 | 106 | 100 | 93 | 95 |
-| grafo10095.93 | 93 | 53 | 50 | 61 | 52 | 50 | 49 | **42** |
-| grafo10096.95 | 95 | 103 | 81 | 92 | 97 | 93 | 89 | **79** |
-| grafo10097.95 | 95 | 47 | 51 | 47 | 46 | 41 | 39 | **34** |
-| grafo10098.95 | 95 | 104 | 102 | 112 | 101 | 94 | 94 | **90** |
-| grafo10099.94 | 94 | 149 | 179 | 165 | 141 | 137 | 133 | **124** |
-| grafo10100.99 | 99 | 104 | 102 | 90 | 101 | 87 | 87 | **82** |
-| grafo10101.92 | 92 | 102 | 106 | 109 | 97 | 93 | 83 | **82** |
-| grafo10102.97 | 97 | 53 | 58 | 60 | 52 | 48 | 41 | **42** |
+| grafo10095.93 | 93 | 53 | 50 | 61 | 52 | 50 | 49 | 42 |
+| grafo10096.95 | 95 | 103 | 81 | 92 | 97 | 93 | 89 | 79 |
+| grafo10097.95 | 95 | 47 | 51 | 47 | 46 | 41 | 39 | 34 |
+| grafo10098.95 | 95 | 104 | 102 | 112 | 101 | 94 | 94 | 90 |
+| grafo10099.94 | 94 | 149 | 179 | 165 | 141 | 137 | 133 | 124 |
+| grafo10100.99 | 99 | 104 | 102 | 90 | 101 | 87 | 87 | 82 |
+| grafo10101.92 | 92 | 102 | 106 | 109 | 97 | 93 | 83 | 82 |
+| grafo10102.97 | 97 | 53 | 58 | 60 | 52 | 48 | 41 | 42 |
