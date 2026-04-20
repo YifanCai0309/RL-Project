@@ -1,8 +1,9 @@
 # Graph Layout Optimization via Reinforcement Learning: Minimizing Edge Crossings
 
-Course: CSA 5180 — Reinforcement Learning  
+Course: CS 5180 — Reinforcement Learning  
 Date: April 2026  
 Dataset: Rome Graph Collection  
+Members: Yifan Cai, Jiawen Cai, Xukun Zhang
 
 ---
 
@@ -16,7 +17,7 @@ We formulate graph layout optimization as a Reinforcement Learning (RL) problem,
 
 Graph visualization is a fundamental tool for making sense of relational data — from social networks and dependency graphs to circuit layouts and biological pathways. A primary measure of layout quality is the number of edge crossings: every crossing obscures structure and impedes readability.
 
-Formally, given an undirected graph $G = (V, E)$, a graph layout assigns 2-D coordinates $x_v \in \mathbb{R}^2$ to each node $v \in V$. Classical methods such as neato and sfdp minimize a differentiable proxy objective, the graph-theoretic *stress*:
+Formally, given an undirected graph $G = (V, E)$, a graph layout assigns 2-D coordinates $x_v \in \mathbb{R}^2$ to each node $v \in V$. Classical methods such as neato and sfdp minimize a differentiable proxy objective, the graph-theoretic *stress* (Di Battista et al., 1999):
 $$\text{Stress}(X) = \sum_{i < j} w_{ij}\bigl(\|x_i - x_j\| - d_{ij}\bigr)^2$$
 where $d_{ij}$ is the shortest-path distance and $w_{ij} = d_{ij}^{-2}$.
 
@@ -132,7 +133,7 @@ Full architecture: 3 → 128 (input projection) → 3 × GATv2(128, H=4) → nod
 
 ### 3.5 Training: REINFORCE (Baseline)
 
-Both RL-MLP and GNN-RL use the REINFORCE policy gradient algorithm:
+Both RL-MLP and GNN-RL use the REINFORCE policy gradient algorithm (Williams, 1992):
 
 Discounted returns: $G_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$, $\gamma = 0.99$
 
@@ -148,7 +149,7 @@ Proximal Policy Optimization (PPO; Schulman et al., 2017) improves upon REINFORC
 - Clipped surrogate: prevents destructively large policy updates
 - Value function baseline: reduces gradient variance via the critic
 
-Generalized Advantage Estimation (GAE):
+Generalized Advantage Estimation (GAE; Schulman et al., 2016):
 $$\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$$
 $$\hat{A}_t = \sum_{\ell=0}^{T-t} (\gamma \lambda)^\ell \delta_{t+\ell}, \qquad \lambda = 0.95$$
 
@@ -297,7 +298,7 @@ Reproducibility: All code is available at https://github.com/YifanCai0309/RL-Pro
 4. Schulman, J., Wolski, F., Dhariwal, P., Radford, A., & Klimov, O. (2017). Proximal policy optimization algorithms. *arXiv:1707.06347*.
 5. Schulman, J., Moritz, P., Levine, S., Jordan, M., & Abbeel, P. (2016). High-dimensional continuous control using generalized advantage estimation. *ICLR 2016*.
 6. Di Battista, G., Eades, P., Tamassia, R., & Tollis, I. G. (1999). *Graph Drawing: Algorithms for the Visualization of Graphs*. Prentice Hall.
-7. Laman, Y., et al. GraphDrawingBenchmark. https://github.com/yolandalalala/GraphDrawingBenchmark
+7. Luo, Y. (2023). GraphDrawingBenchmark [Software repository]. GitHub. https://github.com/yolandalalala/GraphDrawingBenchmark
 
 ---
 
